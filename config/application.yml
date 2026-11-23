@@ -11,8 +11,8 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${JWT_ISSUER:http://localhost:8180/realms/kodr}
-          jwk-set-uri: ${JWT_JWKS:http://localhost:8180/realms/kodr/protocol/openid-connect/certs}
+          issuer-uri: ${JWT_ISSUER:http://localhost:8080}
+          jwk-set-uri: ${JWT_JWKS:http://localhost:8180/oauth2/jwks}
           audiences:
             - kodr-api
   mvc:

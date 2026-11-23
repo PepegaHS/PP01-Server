@@ -17,7 +17,7 @@ import java.util.UUID;
 
 @Component
 class GradingTasks {
-    private final RestClient keycloak;
+    private final RestClient authorizationServer;
     private final RestClient tasks;
     private final String tokenUri;
     private final String clientId;
@@ -26,7 +26,7 @@ class GradingTasks {
     GradingTasks(RestClientBuilderConfigurer configurer, @LoadBalanced RestClient.Builder discovery,
                  @Value("${kodr.grader.token-uri}") String tokenUri,
                  @Value("${kodr.grader.client-id}") String clientId, @Value("${kodr.grader.secret}") String secret) {
-        this.keycloak = configurer.configure(RestClient.builder()).build();
+        this.authorizationServer = configurer.configure(RestClient.builder()).build();
         this.tasks = discovery.clone().baseUrl("http://task-service").build();
         this.tokenUri = tokenUri;
         this.clientId = clientId;
@@ -48,8 +48,9 @@ class GradingTasks {
     private String serviceToken() {
         var form = new LinkedMultiValueMap<String, String>();
         form.add("grant_type", "client_credentials");
+        form.add("scope", "kodr.internal");
         try {
-            return KodrWeb.requiredBody(keycloak.post().uri(tokenUri).headers(headers -> headers.setBasicAuth(clientId, secret))
+            return KodrWeb.requiredBody(authorizationServer.post().uri(tokenUri).headers(headers -> headers.setBasicAuth(clientId, secret))
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED).body(form)
                     .retrieve(), Token.class).accessToken();
         } catch (RestClientException error) {

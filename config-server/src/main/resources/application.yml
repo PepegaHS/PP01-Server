@@ -6,6 +6,7 @@ spring:
   cloud:
     config:
       server:
+        accept-empty: false
         native:
           search-locations: ${CONFIG_REPOSITORY:file:./config}
 server:

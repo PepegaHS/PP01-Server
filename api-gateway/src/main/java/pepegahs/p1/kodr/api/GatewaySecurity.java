@@ -3,6 +3,7 @@ package pepegahs.p1.kodr.api;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
@@ -15,7 +16,6 @@ import reactor.core.publisher.Flux;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 
 @Configuration(proxyBeanMethods = false)
 class GatewaySecurity {
@@ -33,8 +33,7 @@ class GatewaySecurity {
             if (jwt.getSubject() == null || jwt.getSubject().isBlank()) {
                 return Flux.error(new InvalidBearerTokenException("Missing JWT subject"));
             }
-            Map<String, Object> access = jwt.getClaimAsMap("realm_access");
-            if (access == null || !(access.get("roles") instanceof Collection<?> roles)) {
+            if (!(jwt.getClaim("roles") instanceof Collection<?> roles)) {
                 return Flux.empty();
             }
             return Flux.fromIterable(roles).ofType(String.class).map(role -> new SimpleGrantedAuthority("ROLE_" + role));
@@ -47,8 +46,10 @@ class GatewaySecurity {
                 .authorizeExchange(exchange -> exchange
                         .pathMatchers("/actuator/health", "/actuator/health/**", "/swagger-ui.html", "/swagger-ui/**",
                                 "/v3/api-docs", "/v3/api-docs/**", "/docs/**").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/oauth2/jwks").permitAll()
                         .pathMatchers("/actuator/**").hasRole("admin")
-                        .pathMatchers("/api/**").hasAnyRole("student", "teacher")
+                        .pathMatchers("/api/**").hasAnyRole("student", "teacher", "admin")
                         .anyExchange().denyAll())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtConverter)))
                 .build();

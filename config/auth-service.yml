@@ -1,0 +1,21 @@
+server:
+  port: 8180
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/kodr_auth}
+    username: ${DB_USER:kodr_auth}
+    password: ${DB_PASSWORD:kodr-dev-auth}
+    hikari:
+      maximum-pool-size: 5
+
+kodr:
+  auth:
+    issuer: ${JWT_ISSUER:http://localhost:8080}
+    grader-secret: ${GRADER_CLIENT_SECRET:kodr-dev-grader}
+    demo-users: ${AUTH_DEMO_USERS:false}
+    student-password: ${AUTH_STUDENT_PASSWORD:kodr-dev-student}
+    teacher-password: ${AUTH_TEACHER_PASSWORD:kodr-dev-teacher}
+    admin-username: ${AUTH_ADMIN_USERNAME:admin}
+    admin-email: ${AUTH_ADMIN_EMAIL:admin@kodr.native}
+    admin-password: ${AUTH_ADMIN_PASSWORD:}

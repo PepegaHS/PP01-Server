@@ -12,6 +12,6 @@ spring:
 
 kodr:
   grader:
-    token-uri: ${KEYCLOAK_TOKEN_URI:http://localhost:8180/realms/kodr/protocol/openid-connect/token}
+    token-uri: ${AUTH_TOKEN_URI:http://localhost:8180/oauth2/token}
     client-id: kodr-grader
     secret: ${GRADER_CLIENT_SECRET:kodr-dev-grader}

@@ -35,7 +35,7 @@ class ProfilesController {
     Account me(@AuthenticationPrincipal Jwt jwt) {
         return db.query("SELECT * FROM profiles WHERE subject = ?", (row, index) ->
                         new Account(PROFILE.mapRow(row, index), new Settings(row.getString("locale"),
-                                row.getBoolean("email_notifications")), KodrWeb.roles(jwt.getClaimAsMap("realm_access"))),
+                                row.getBoolean("email_notifications")), KodrWeb.roles(jwt)),
                         jwt.getSubject())
                 .stream().findFirst().orElseThrow(() -> KodrWeb.notFound("Профиль не найден"));
     }

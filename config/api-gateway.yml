@@ -11,6 +11,16 @@ spring:
             connect-timeout: 2000
             response-timeout: 65s
           routes:
+            - id: auth
+              uri: lb://auth-service
+              predicates:
+                - Path=/oauth2/jwks,/api/auth/register,/api/auth/login
+            - id: auth-docs
+              uri: lb://auth-service
+              predicates:
+                - Path=/docs/auth
+              filters:
+                - SetPath=/v3/api-docs
             - id: user
               uri: lb://user-service
               predicates:
@@ -128,6 +138,8 @@ springdoc:
   swagger-ui:
     disable-swagger-default-url: true
     urls:
+      - name: auth-service
+        url: /docs/auth
       - name: user-service
         url: /docs/user
       - name: course-service

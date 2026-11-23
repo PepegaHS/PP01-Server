@@ -15,8 +15,8 @@ x-env: &env
   CONFIG_SERVER_URL: http://config-server:8080
   EUREKA_URL: http://discovery-server:8080/eureka/
   SERVER_PORT: 8080
-  JWT_ISSUER: "${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/kodr"
-  JWT_JWKS: http://keycloak:8080/realms/kodr/protocol/openid-connect/certs
+  JWT_ISSUER: "${KODR_PUBLIC_URL:-http://localhost:8080}"
+  JWT_JWKS: http://auth-service:8080/oauth2/jwks
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_USER: kodr
   RABBITMQ_PASSWORD: "${RABBITMQ_PASSWORD:-kodr-dev-rabbit}"
@@ -31,8 +31,8 @@ x-business-deps: &business-deps
 
 x-db-deps: &db-deps
   <<: *business-deps
-  postgres:
-    condition: service_healthy
+  postgres-init:
+    condition: service_completed_successfully
 
 x-judge-env: &judge-env
   POSTGRES_HOST: judge-db
@@ -44,12 +44,11 @@ x-judge-env: &judge-env
 
 x-judge-app: &judge-app
   profiles: [judge0]
-  image: judge0/judge0:1.13.1
+  image: kodr-judge0:local
+  pull_policy: never
   privileged: true
   restart: on-failure
   environment: *judge-env
-  volumes:
-    - ./infra/judge0/judge0.conf:/judge0.conf:ro
   depends_on:
     judge-db:
       condition: service_healthy
@@ -62,36 +61,31 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-kodr-dev-postgres}"
-      USER_DB_PASSWORD: "${USER_DB_PASSWORD:-kodr-dev-user}"
-      COURSE_DB_PASSWORD: "${COURSE_DB_PASSWORD:-kodr-dev-course}"
-      TASK_DB_PASSWORD: "${TASK_DB_PASSWORD:-kodr-dev-task}"
-      SUBMISSION_DB_PASSWORD: "${SUBMISSION_DB_PASSWORD:-kodr-dev-submission}"
-      PROGRESS_DB_PASSWORD: "${PROGRESS_DB_PASSWORD:-kodr-dev-progress}"
-      KEYCLOAK_DB_PASSWORD: "${KEYCLOAK_DB_PASSWORD:-kodr-dev-keycloak}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./infra/postgres/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
       interval: 5s
       timeout: 3s
       retries: 20
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.4.7
-    command: [start-dev, --import-realm]
+  postgres-init:
+    image: kodr-postgres-init:local
+    pull_policy: never
+    build:
+      context: .
+      target: postgres-init
+    restart: "no"
     environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/kodr_keycloak
-      KC_DB_USERNAME: kodr_keycloak
-      KC_DB_PASSWORD: "${KEYCLOAK_DB_PASSWORD:-kodr-dev-keycloak}"
-      KC_HOSTNAME: "${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}"
-      GRADER_CLIENT_SECRET: "${GRADER_CLIENT_SECRET:-kodr-dev-grader}"
-      KC_BOOTSTRAP_ADMIN_USERNAME: "${KEYCLOAK_ADMIN_USER:-admin}"
-      KC_BOOTSTRAP_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:-kodr-dev-admin}"
-    ports: ["127.0.0.1:8180:8080"]
-    volumes:
-      - ./infra/keycloak/kodr-realm.json:/opt/keycloak/data/import/kodr-realm.json:ro
+      PGHOST: postgres
+      POSTGRES_USER: postgres
+      PGPASSWORD: "${POSTGRES_PASSWORD:-kodr-dev-postgres}"
+      USER_DB_PASSWORD: "${USER_DB_PASSWORD:-kodr-dev-user}"
+      COURSE_DB_PASSWORD: "${COURSE_DB_PASSWORD:-kodr-dev-course}"
+      TASK_DB_PASSWORD: "${TASK_DB_PASSWORD:-kodr-dev-task}"
+      SUBMISSION_DB_PASSWORD: "${SUBMISSION_DB_PASSWORD:-kodr-dev-submission}"
+      PROGRESS_DB_PASSWORD: "${PROGRESS_DB_PASSWORD:-kodr-dev-progress}"
+      AUTH_DB_PASSWORD: "${AUTH_DB_PASSWORD:-kodr-dev-auth}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -125,13 +119,13 @@ services:
 
   config-server:
     <<: *app
-    build: .
+    build:
+      context: .
+      target: app
     environment:
       <<: *env
       KODR_APP: config-server
       CONFIG_REPOSITORY: file:/opt/kodr/config
-    volumes:
-      - ./config:/opt/kodr/config:ro
 
   discovery-server:
     <<: *app
@@ -150,7 +144,26 @@ services:
       KODR_APP: api-gateway
       KODR_CORS_ORIGINS: "${KODR_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}"
     ports: ["127.0.0.1:8080:8080"]
-    depends_on: *business-deps
+    depends_on:
+      <<: *business-deps
+      auth-service:
+        condition: service_healthy
+
+  auth-service:
+    <<: *app
+    environment:
+      <<: *env
+      KODR_APP: auth-service
+      DB_URL: jdbc:postgresql://postgres:5432/kodr_auth
+      DB_PASSWORD: "${AUTH_DB_PASSWORD:-kodr-dev-auth}"
+      GRADER_CLIENT_SECRET: "${GRADER_CLIENT_SECRET:-kodr-dev-grader}"
+      AUTH_DEMO_USERS: "${AUTH_DEMO_USERS:-true}"
+      AUTH_STUDENT_PASSWORD: "${AUTH_STUDENT_PASSWORD:-kodr-dev-student}"
+      AUTH_TEACHER_PASSWORD: "${AUTH_TEACHER_PASSWORD:-kodr-dev-teacher}"
+      AUTH_ADMIN_USERNAME: "${AUTH_ADMIN_USERNAME:-admin}"
+      AUTH_ADMIN_EMAIL: "${AUTH_ADMIN_EMAIL:-admin@kodr.native}"
+      AUTH_ADMIN_PASSWORD: "${AUTH_ADMIN_PASSWORD-kodr-dev-admin}"
+    depends_on: *db-deps
 
   user-service:
     <<: *app
@@ -186,7 +199,7 @@ services:
       KODR_APP: submission-service
       DB_URL: jdbc:postgresql://postgres:5432/kodr_submission
       DB_PASSWORD: "${SUBMISSION_DB_PASSWORD:-kodr-dev-submission}"
-      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/kodr/protocol/openid-connect/token
+      AUTH_TOKEN_URI: http://auth-service:8080/oauth2/token
       GRADER_CLIENT_SECRET: "${GRADER_CLIENT_SECRET:-kodr-dev-grader}"
     depends_on:
       <<: *db-deps
@@ -226,6 +239,9 @@ services:
 
   judge0:
     <<: *judge-app
+    build:
+      context: .
+      target: judge0
     networks: [judge-api, judge-storage]
 
   judge-worker:
