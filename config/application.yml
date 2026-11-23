@@ -1,0 +1,72 @@
+spring:
+  cloud:
+    loadbalancer:
+      cache:
+        ttl: 5s
+  http:
+    client:
+      connect-timeout: 2s
+      read-timeout: 3s
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER:http://localhost:8180/realms/kodr}
+          jwk-set-uri: ${JWT_JWKS:http://localhost:8180/realms/kodr/protocol/openid-connect/certs}
+          audiences:
+            - kodr-api
+  mvc:
+    problemdetails:
+      enabled: true
+  webflux:
+    problemdetails:
+      enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:kodr}
+    password: ${RABBITMQ_PASSWORD:kodr-dev-rabbit}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+      observation-enabled: true
+    listener:
+      simple:
+        observation-enabled: true
+        prefetch: 1
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 5
+          initial-interval: 1s
+          max-interval: 10s
+          multiplier: 2
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    registry-fetch-interval-seconds: 5
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  tracing:
+    sampling:
+      probability: ${TRACE_SAMPLING:1.0}
+    propagation:
+      type: w3c
+  otlp:
+    tracing:
+      endpoint: ${OTEL_ENDPOINT:http://localhost:4318/v1/traces}
+
+logging:
+  pattern:
+    correlation: "[%X{traceId:-},%X{spanId:-}] "
+

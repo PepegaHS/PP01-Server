@@ -1,0 +1,11 @@
+server:
+  port: 8083
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/kodr_task}
+    username: ${DB_USER:kodr_task}
+    password: ${DB_PASSWORD:kodr-dev-task}
+    hikari:
+      maximum-pool-size: 5
+  flyway:
+    enabled: true

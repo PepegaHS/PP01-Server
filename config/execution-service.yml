@@ -1,0 +1,33 @@
+server:
+  port: 8085
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+  cloud:
+    circuitbreaker:
+      resilience4j:
+        enabled: true
+
+kodr:
+  judge0:
+    url: ${JUDGE0_URL:http://localhost:2358}
+    auth-header: ${JUDGE0_AUTH_HEADER:X-Auth-Token}
+    token: ${JUDGE0_TOKEN:}
+    poll-timeout: 25s
+    poll-interval: 400ms
+  execution:
+    result-ttl: 30m
+  grading:
+    workers: ${GRADING_WORKERS:2}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      judge0:
+        sliding-window-size: 20
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s

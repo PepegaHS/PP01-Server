@@ -1,0 +1,17 @@
+server:
+  port: 8084
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/kodr_submission}
+    username: ${DB_USER:kodr_submission}
+    password: ${DB_PASSWORD:kodr-dev-submission}
+    hikari:
+      maximum-pool-size: 5
+  flyway:
+    enabled: true
+
+kodr:
+  grader:
+    token-uri: ${KEYCLOAK_TOKEN_URI:http://localhost:8180/realms/kodr/protocol/openid-connect/token}
+    client-id: kodr-grader
+    secret: ${GRADER_CLIENT_SECRET:kodr-dev-grader}

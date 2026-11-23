@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: ${CONFIG_REPOSITORY:file:./config}
+server:
+  port: 8888
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  otlp:
+    tracing:
+      endpoint: ${OTEL_ENDPOINT:http://localhost:4318/v1/traces}
+logging:
+  pattern:
+    correlation: "[%X{traceId:-},%X{spanId:-}] "

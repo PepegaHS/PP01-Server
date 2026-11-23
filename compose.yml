@@ -1,0 +1,281 @@
+name: kodr
+
+x-app: &app
+  image: kodr-server:local
+  pull_policy: never
+  restart: on-failure
+  healthcheck:
+    test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3; read -r status <&3; [[ $$status == *' 200 '* ]]"]
+    interval: 5s
+    timeout: 4s
+    retries: 20
+    start_period: 20s
+
+x-env: &env
+  CONFIG_SERVER_URL: http://config-server:8080
+  EUREKA_URL: http://discovery-server:8080/eureka/
+  SERVER_PORT: 8080
+  JWT_ISSUER: "${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/kodr"
+  JWT_JWKS: http://keycloak:8080/realms/kodr/protocol/openid-connect/certs
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_USER: kodr
+  RABBITMQ_PASSWORD: "${RABBITMQ_PASSWORD:-kodr-dev-rabbit}"
+  OTEL_ENDPOINT: http://jaeger:4318/v1/traces
+  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75 -Xmx384m -XX:ActiveProcessorCount=2
+
+x-business-deps: &business-deps
+  config-server:
+    condition: service_healthy
+  discovery-server:
+    condition: service_healthy
+
+x-db-deps: &db-deps
+  <<: *business-deps
+  postgres:
+    condition: service_healthy
+
+x-judge-env: &judge-env
+  POSTGRES_HOST: judge-db
+  POSTGRES_USER: judge0
+  POSTGRES_DB: judge0
+  POSTGRES_PASSWORD: "${JUDGE_DB_PASSWORD:-kodr-dev-judge-db}"
+  REDIS_HOST: judge-redis
+  REDIS_PASSWORD: "${JUDGE_REDIS_PASSWORD:-kodr-dev-judge-redis}"
+
+x-judge-app: &judge-app
+  profiles: [judge0]
+  image: judge0/judge0:1.13.1
+  privileged: true
+  restart: on-failure
+  environment: *judge-env
+  volumes:
+    - ./infra/judge0/judge0.conf:/judge0.conf:ro
+  depends_on:
+    judge-db:
+      condition: service_healthy
+    judge-redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17.7-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-kodr-dev-postgres}"
+      USER_DB_PASSWORD: "${USER_DB_PASSWORD:-kodr-dev-user}"
+      COURSE_DB_PASSWORD: "${COURSE_DB_PASSWORD:-kodr-dev-course}"
+      TASK_DB_PASSWORD: "${TASK_DB_PASSWORD:-kodr-dev-task}"
+      SUBMISSION_DB_PASSWORD: "${SUBMISSION_DB_PASSWORD:-kodr-dev-submission}"
+      PROGRESS_DB_PASSWORD: "${PROGRESS_DB_PASSWORD:-kodr-dev-progress}"
+      KEYCLOAK_DB_PASSWORD: "${KEYCLOAK_DB_PASSWORD:-kodr-dev-keycloak}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.7
+    command: [start-dev, --import-realm]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/kodr_keycloak
+      KC_DB_USERNAME: kodr_keycloak
+      KC_DB_PASSWORD: "${KEYCLOAK_DB_PASSWORD:-kodr-dev-keycloak}"
+      KC_HOSTNAME: "${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}"
+      GRADER_CLIENT_SECRET: "${GRADER_CLIENT_SECRET:-kodr-dev-grader}"
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${KEYCLOAK_ADMIN_USER:-admin}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:-kodr-dev-admin}"
+    ports: ["127.0.0.1:8180:8080"]
+    volumes:
+      - ./infra/keycloak/kodr-realm.json:/opt/keycloak/data/import/kodr-realm.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --maxmemory, 128mb, --maxmemory-policy, allkeys-lru]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    environment:
+      RABBITMQ_DEFAULT_USER: kodr
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:-kodr-dev-rabbit}"
+    ports: ["127.0.0.1:15672:15672"]
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 7s
+      retries: 20
+
+  jaeger:
+    image: jaegertracing/jaeger:2.12.0
+    ports: ["127.0.0.1:16686:16686"]
+
+  config-server:
+    <<: *app
+    build: .
+    environment:
+      <<: *env
+      KODR_APP: config-server
+      CONFIG_REPOSITORY: file:/opt/kodr/config
+    volumes:
+      - ./config:/opt/kodr/config:ro
+
+  discovery-server:
+    <<: *app
+    environment:
+      <<: *env
+      KODR_APP: discovery-server
+    ports: ["127.0.0.1:8761:8080"]
+    depends_on:
+      config-server:
+        condition: service_healthy
+
+  api-gateway:
+    <<: *app
+    environment:
+      <<: *env
+      KODR_APP: api-gateway
+      KODR_CORS_ORIGINS: "${KODR_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}"
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on: *business-deps
+
+  user-service:
+    <<: *app
+    environment:
+      <<: *env
+      KODR_APP: user-service
+      DB_URL: jdbc:postgresql://postgres:5432/kodr_user
+      DB_PASSWORD: "${USER_DB_PASSWORD:-kodr-dev-user}"
+    depends_on: *db-deps
+
+  course-service:
+    <<: *app
+    environment:
+      <<: *env
+      KODR_APP: course-service
+      DB_URL: jdbc:postgresql://postgres:5432/kodr_course
+      DB_PASSWORD: "${COURSE_DB_PASSWORD:-kodr-dev-course}"
+    depends_on: *db-deps
+
+  task-service:
+    <<: *app
+    environment:
+      <<: *env
+      KODR_APP: task-service
+      DB_URL: jdbc:postgresql://postgres:5432/kodr_task
+      DB_PASSWORD: "${TASK_DB_PASSWORD:-kodr-dev-task}"
+    depends_on: *db-deps
+
+  submission-service:
+    <<: *app
+    environment:
+      <<: *env
+      KODR_APP: submission-service
+      DB_URL: jdbc:postgresql://postgres:5432/kodr_submission
+      DB_PASSWORD: "${SUBMISSION_DB_PASSWORD:-kodr-dev-submission}"
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/kodr/protocol/openid-connect/token
+      GRADER_CLIENT_SECRET: "${GRADER_CLIENT_SECRET:-kodr-dev-grader}"
+    depends_on:
+      <<: *db-deps
+      rabbitmq:
+        condition: service_healthy
+
+  execution-service:
+    <<: *app
+    environment:
+      <<: *env
+      KODR_APP: execution-service
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_HOSTNAME: execution-service
+      REDIS_HOST: redis
+      JUDGE0_URL: "${JUDGE0_URL:-http://judge0:2358}"
+      JUDGE0_AUTH_HEADER: "${JUDGE0_AUTH_HEADER:-X-Auth-Token}"
+      JUDGE0_TOKEN: "${JUDGE0_TOKEN:-}"
+    networks: [default, judge-api]
+    depends_on:
+      <<: *business-deps
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  progress-service:
+    <<: *app
+    environment:
+      <<: *env
+      KODR_APP: progress-service
+      DB_URL: jdbc:postgresql://postgres:5432/kodr_progress
+      DB_PASSWORD: "${PROGRESS_DB_PASSWORD:-kodr-dev-progress}"
+    depends_on:
+      <<: *db-deps
+      rabbitmq:
+        condition: service_healthy
+
+  judge0:
+    <<: *judge-app
+    networks: [judge-api, judge-storage]
+
+  judge-worker:
+    <<: *judge-app
+    command: ["./scripts/workers"]
+    networks: [judge-storage]
+    depends_on:
+      judge-db:
+        condition: service_healthy
+      judge-redis:
+        condition: service_healthy
+      judge0:
+        condition: service_started
+
+  judge-db:
+    profiles: [judge0]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: "${JUDGE_DB_PASSWORD:-kodr-dev-judge-db}"
+    networks: [judge-storage]
+    volumes:
+      - judge-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U judge0 -d judge0"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  judge-redis:
+    profiles: [judge0]
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: "${JUDGE_REDIS_PASSWORD:-kodr-dev-judge-redis}"
+    command: ["sh", "-ec", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    networks: [judge-storage]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  judge-data:
+
+networks:
+  judge-api:
+    internal: true
+  judge-storage:
+    internal: true

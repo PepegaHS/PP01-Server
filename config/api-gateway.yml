@@ -1,0 +1,146 @@
+server:
+  port: 8080
+spring:
+  reactor:
+    context-propagation: auto
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 65s
+          routes:
+            - id: user
+              uri: lb://user-service
+              predicates:
+                - Path=/api/users,/api/users/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: user
+                    fallbackUri: forward:/fallback
+                    statusCodes: 500,502,503,504
+            - id: user-docs
+              uri: lb://user-service
+              predicates:
+                - Path=/docs/user
+              filters:
+                - SetPath=/v3/api-docs
+            - id: course
+              uri: lb://course-service
+              predicates:
+                - Path=/api/courses,/api/courses/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: course
+                    fallbackUri: forward:/fallback
+                    statusCodes: 500,502,503,504
+            - id: course-docs
+              uri: lb://course-service
+              predicates:
+                - Path=/docs/course
+              filters:
+                - SetPath=/v3/api-docs
+            - id: task
+              uri: lb://task-service
+              predicates:
+                - Path=/api/tasks,/api/tasks/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: task
+                    fallbackUri: forward:/fallback
+                    statusCodes: 500,502,503,504
+            - id: task-docs
+              uri: lb://task-service
+              predicates:
+                - Path=/docs/task
+              filters:
+                - SetPath=/v3/api-docs
+            - id: submission
+              uri: lb://submission-service
+              predicates:
+                - Path=/api/submissions,/api/submissions/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: submission
+                    fallbackUri: forward:/fallback
+                    statusCodes: 500,502,503,504
+            - id: submission-docs
+              uri: lb://submission-service
+              predicates:
+                - Path=/docs/submission
+              filters:
+                - SetPath=/v3/api-docs
+            - id: execution
+              uri: lb://execution-service
+              predicates:
+                - Path=/api/execution,/api/execution/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: execution
+                    fallbackUri: forward:/fallback
+                    statusCodes: 500,502,503,504
+            - id: execution-docs
+              uri: lb://execution-service
+              predicates:
+                - Path=/docs/execution
+              filters:
+                - SetPath=/v3/api-docs
+            - id: progress
+              uri: lb://progress-service
+              predicates:
+                - Path=/api/progress,/api/progress/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: progress
+                    fallbackUri: forward:/fallback
+                    statusCodes: 500,502,503,504
+            - id: progress-docs
+              uri: lb://progress-service
+              predicates:
+                - Path=/docs/progress
+              filters:
+                - SetPath=/v3/api-docs
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 20
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 10s
+    instances:
+      execution:
+        timeout-duration: 65s
+
+springdoc:
+  swagger-ui:
+    disable-swagger-default-url: true
+    urls:
+      - name: user-service
+        url: /docs/user
+      - name: course-service
+        url: /docs/course
+      - name: task-service
+        url: /docs/task
+      - name: submission-service
+        url: /docs/submission
+      - name: execution-service
+        url: /docs/execution
+      - name: progress-service
+        url: /docs/progress
+
+kodr:
+  cors:
+    origins: ${KODR_CORS_ORIGINS:http://localhost:3000,http://localhost:5173}
