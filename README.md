@@ -1,6 +1,6 @@
 # Kodr Server
 
-Серверная часть платформы для изучения Python, Java, C, C++, C# и PHP. API Gateway проверяет JWT Spring Authorization Server и маршрутизирует запросы через Eureka. Микросервисы также проверяют подпись, издателя и аудиторию JWT.
+Серверная часть платформы для изучения Java и Rust. API Gateway проверяет JWT Spring Authorization Server и маршрутизирует запросы через Eureka. Микросервисы также проверяют подпись, издателя и аудиторию JWT.
 
 ## Запуск
 
@@ -69,7 +69,7 @@ python3 infra/postgres/import-keycloak-accounts.py
 | Auth | `/api/auth/register`, `/api/auth/login` | Регистрация, вход и выдача токенов |
 | User | `/api/users` | Создание и просмотр профилей, аватарки и настройки |
 | Course | `/api/courses` | Курсы, модули, уроки и публикация |
-| Task | `/api/tasks` | Условия, шаблоны кода, языки, ограничения и скрытые тесты |
+| Task | `/api/tasks` | Практические задания с кодом и тесты с вариантами ответа |
 | Submission | `/api/submissions` | Отправка решения, история и итог проверки |
 | Execution | `/api/execution` | Свободный запуск с вводом и получение результата |
 | Progress | `/api/progress` | Пройденные уроки и решённые задания по курсу |
@@ -77,10 +77,40 @@ python3 infra/postgres/import-keycloak-accounts.py
 Для ручного запуска программы откройте `POST /api/execution/runs` в Swagger после входа и отправьте тело запроса.
 
 ```json
-{"language":"PYTHON","sourceCode":"print(input())","stdin":"Привет"}
+{"language":"RUST","sourceCode":"fn main() { println!(\"Привет!\"); }","stdin":""}
 ```
 
-Для проверки задания преподаватель создаёт и публикует курс и задание через Swagger. Ученик передаёт `taskId`, `language` и `sourceCode` в `POST /api/submissions`. Запрос возвращает `202` и идентификатор решения. `GET /api/submissions/{id}` возвращает статус `QUEUED` или `COMPLETED` и итоговый вердикт. После `ACCEPTED` задание появляется в прогрессе курса. Учёт пройденного урока выполняется через `PUT /api/progress/courses/{courseId}/lessons/{lessonId}`.
+### Курсы Java и Rust
+
+Миграции Flyway публикуют «Основы Java» с 67 краткими конспектами в пяти модулях, пятью практическими заданиями и пятью тестами. Уроки идут в порядке оглавления от «Введения в Java» до проверок `assert`. В каждом конспекте есть ссылка на соответствующий материал. [Оглавление Metanit](https://metanit.com/java/tutorial/)
+
+«Основы Rust» содержат 48 конспектов в пяти модулях, пять практических заданий и пять тестов. Темы идут от установки Rust до трейтов `Debug` и `Display` в порядке оглавления. В каждом уроке есть ссылка на исходную страницу. [Оглавление Metanit](https://metanit.com/rust/tutorial/)
+
+В Swagger вызовите `GET /api/courses?language=JAVA` или `GET /api/courses?language=RUST`, затем `GET /api/courses/{id}` для чтения уроков и `GET /api/tasks?courseId={id}` для выбора задания. Пройденный урок можно отметить через `PUT /api/progress/courses/{courseId}/lessons/{lessonId}`.
+
+API принимает Java и Rust при создании курсов, настройке шаблонов и запуске кода. `GET /api/execution/languages` возвращает оба языка. Практические шаблоны Rust рассчитаны на Rust 1.40 из локального Judge0 CE. Курсы на прежних языках скрыты из каталога, а история уже сохранённых решений доступна ученикам.
+
+### Создание и решение заданий
+
+Преподаватель создаёт черновик через `POST /api/tasks` с полями `courseId` и `data`, затем публикует его через `PUT /api/tasks/{id}/publication`. В `data` передаются название, условие и поля выбранного типа.
+
+| `data.type` | Поля задания | Поля решения помимо `taskId` |
+| --- | --- | --- |
+| `PRACTICAL` | `templates`, `tests`, `cpuSeconds`, `memoryKb` | `language`, `sourceCode` |
+| `QUIZ` | `options` с парами `id` и `text`, `correctOptionIds` | `selectedOptionIds` |
+
+Оба типа принимаются через `POST /api/submissions`. Практическое решение возвращает `202 Accepted` и проверяется асинхронно. Для теста отправьте идентификаторы из `options`, например:
+
+```json
+{
+  "taskId": "00000000-0000-0000-0000-000000000000",
+  "selectedOptionIds": ["a", "c"]
+}
+```
+
+При `multipleChoice: false` выберите один вариант. При `multipleChoice: true` зачёт требует точного совпадения с набором правильных вариантов в любом порядке. Тест сразу возвращает `201 Created` с вердиктом `ACCEPTED` или `WRONG_ANSWER`. Ключ ответов доступен преподавателю для своих заданий через `GET /api/tasks/{id}/answer-key`.
+
+История ученика доступна через `GET /api/submissions`, а статус отдельного решения через `GET /api/submissions/{id}`. Результат `ACCEPTED` у обоих типов учитывается в `GET /api/progress/courses/{courseId}`.
 
 ## Проверка и наблюдаемость
 
@@ -93,4 +123,4 @@ docker compose logs -f submission-service execution-service
 
 Maven-сборке нужен JDK 21 или новее. Конфигурация сервисов хранится в `config/` и загружается через Spring Cloud Config. Actuator публикует `/actuator/health`, `/actuator/info` и `/actuator/prometheus`. На Gateway и бизнес-сервисах для `info` и `prometheus` нужна роль `admin`. В логах присутствуют идентификаторы трасс и спанов. Jaeger принимает OTLP-трассы HTTP-вызовов, обращений к Judge0 и событий RabbitMQ. Gateway и клиент Judge0 используют Circuit Breaker.
 
-Submission Service сохраняет решение и запись transactional outbox одной транзакцией. Он публикует сообщение со снимком тестов и ждёт подтверждения RabbitMQ. Execution Service выполняет тесты через Judge0, а Progress Service обновляет прогресс после подтверждённого решения. Повторная доставка итогового вердикта или события `ACCEPTED` не меняет уже проверенное решение и не дублирует прогресс. Сообщения с исчерпанными попытками обработки доступны в очередях с суффиксом `.dead`.
+Submission Service сохраняет решение и запись transactional outbox одной транзакцией. Для практики он публикует сообщение со снимком проверок и ждёт подтверждения RabbitMQ. Execution Service выполняет код через Judge0. Progress Service получает событие о зачтённом решении обоих типов. Повторная доставка итогового вердикта или события `ACCEPTED` не меняет уже проверенное решение и не дублирует прогресс. Сообщения с исчерпанными попытками обработки доступны в очередях с суффиксом `.dead`.

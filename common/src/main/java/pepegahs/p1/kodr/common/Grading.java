@@ -22,7 +22,7 @@ public final class Grading {
         }
     }
 
-    public record Requested(UUID id, Language language, String sourceCode, Learning.GradingTask task) {
+    public record Requested(UUID id, String language, String sourceCode, Learning.GradingTask task) {
     }
 
     public record Finished(UUID id, Verdict verdict, int passedTests, int totalTests,

@@ -1,6 +1,8 @@
 package pepegahs.p1.kodr.common;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
@@ -24,7 +26,15 @@ public final class Learning {
     public record TestCase(@NotNull @Size(max = 8192) String stdin, @NotNull @Size(max = 8192) String expectedOutput) {
     }
 
-    public record GradingTask(UUID id, UUID courseId, Set<Language> languages, double cpuSeconds,
-                              int memoryKb, List<TestCase> tests) {
+    public record ChoiceOption(@NotBlank @Pattern(regexp = "[A-Za-z0-9_-]{1,64}") String id,
+                               @NotBlank @Size(max = 500) String text) {
+    }
+
+    public record GradingTask(UUID id, UUID courseId, Set<String> languages, Double cpuSeconds,
+                              Integer memoryKb, List<TestCase> tests, TaskType type,
+                              Set<String> optionIds, Set<String> correctOptionIds) {
+        public GradingTask {
+            type = TaskType.defaultToPractical(type);
+        }
     }
 }

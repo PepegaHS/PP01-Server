@@ -40,7 +40,7 @@ class Judge0Test {
     void submitsBase64AndPollsForOutputAndMetrics() {
         server.expect(requestTo(CREATE)).andExpect(method(HttpMethod.POST)).andExpect(header("X-Auth-Token", "test-token"))
                 .andExpect(content().json("""
-                        {"language_id":71,"source_code":"cHJpbnQoaW5wdXQoKSk=","stdin":"0LQ=",
+                        {"language_id":73,"source_code":"Zm4gbWFpbigpIHt9","stdin":"0LQ=",
                          "expected_output":"0LQK","cpu_time_limit":1.5,"memory_limit":128000,"enable_network":false}
                         """))
                 .andRespond(withStatus(HttpStatus.CREATED).body("{\"token\":\"job\"}").contentType(MediaType.APPLICATION_JSON));
@@ -48,7 +48,7 @@ class Judge0Test {
         expectPoll("{\"status\":{\"id\":2}}");
         expectPoll("{\"status\":{\"id\":3},\"stdout\":\"0LQK\",\"time\":\"0.034\",\"memory\":10024}");
 
-        Judge0.Result result = judge.execute(Language.PYTHON, "print(input())", "д", "д\n", 1.5, 128000);
+        Judge0.Result result = judge.execute(Language.RUST, "fn main() {}", "д", "д\n", 1.5, 128000);
 
         assertThat(result).isEqualTo(new Judge0.Result(Verdict.ACCEPTED, "д\n", null, null, 0.034, 10024));
         server.verify();
@@ -60,7 +60,7 @@ class Judge0Test {
         server.expect(requestTo(startsWith(POLL))).andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
         expectPoll("{\"status\":{\"id\":6},\"compile_output\":\"ZXJyb3I=\"}");
 
-        Judge0.Result result = judge.execute(Language.C, "invalid source", "", "result", 1, 128000);
+        Judge0.Result result = judge.execute(Language.JAVA, "invalid source", "", "result", 1, 128000);
 
         assertThat(result.verdict()).isEqualTo(Verdict.COMPILATION_ERROR);
         assertThat(result.compileOutput()).isEqualTo("error");
@@ -72,7 +72,7 @@ class Judge0Test {
         expectCreate();
         expectPoll("{\"status\":{\"id\":3},\"stdout\":\"dW5leHBlY3RlZA==\"}");
 
-        Judge0.Result result = judge.execute(Language.PHP, "<?php echo 'unexpected';", "", "", 1, 128000);
+        Judge0.Result result = judge.execute(Language.RUST, "fn main() { println!(\"unexpected\"); }", "", "", 1, 128000);
 
         assertThat(result.verdict()).isEqualTo(Verdict.WRONG_ANSWER);
         server.verify();

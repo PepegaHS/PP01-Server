@@ -11,6 +11,7 @@ import pepegahs.p1.kodr.common.Grading.Verdict;
 import pepegahs.p1.kodr.common.GradingBroker;
 import pepegahs.p1.kodr.common.GradingBroker.Publisher;
 import pepegahs.p1.kodr.common.Json;
+import pepegahs.p1.kodr.common.Language;
 
 import java.nio.charset.StandardCharsets;
 
@@ -36,6 +37,13 @@ class SubmissionWorker {
 
     Grading.Finished grade(Grading.Requested request) {
         var task = request.task();
+        Language language;
+        try {
+            language = Language.valueOf(request.language());
+        } catch (IllegalArgumentException error) {
+            LOG.info("Skipped submission {} for retired language {}", request.id(), request.language());
+            return new Grading.Finished(request.id(), Verdict.SYSTEM_ERROR, 0, task.tests().size(), null, null, null);
+        }
         Verdict verdict = Verdict.ACCEPTED;
         int passed = 0;
         Double maxTime = null;
@@ -45,7 +53,7 @@ class SubmissionWorker {
         for (var test : task.tests()) {
             Judge0.Result result;
             try {
-                result = judge.execute(request.language(), request.sourceCode(), test.stdin(), test.expectedOutput(),
+                result = judge.execute(language, request.sourceCode(), test.stdin(), test.expectedOutput(),
                         task.cpuSeconds(), task.memoryKb());
             } catch (Judge0.Unavailable error) {
                 LOG.warn("Judge0 failed for submission {}: {}", request.id(), error.getMessage());

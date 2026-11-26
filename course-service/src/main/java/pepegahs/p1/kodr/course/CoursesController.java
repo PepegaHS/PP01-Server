@@ -44,7 +44,7 @@ class CoursesController {
     @Operation(summary = "Получить опубликованные курсы и свои черновики")
     List<CourseSummary> list(@AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) Language language,
                              @RequestParam(defaultValue = "0") @jakarta.validation.constraints.Min(0) int offset) {
-        String sql = "SELECT * FROM courses WHERE (published OR owner = ?)";
+        String sql = "SELECT * FROM courses WHERE language IN ('JAVA', 'RUST') AND (published OR owner = ?)";
         if (language != null) {
             return db.query(sql + " AND language = ? ORDER BY title, id LIMIT 100 OFFSET ?", SUMMARY,
                     jwt.getSubject(), language.name(), offset);
@@ -55,7 +55,7 @@ class CoursesController {
     @GetMapping("/{id}/summary")
     @Operation(summary = "Получить сведения о курсе без учебных материалов")
     CourseSummary summary(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return db.query("SELECT * FROM courses WHERE id = ? AND (published OR owner = ?)", SUMMARY, id, jwt.getSubject())
+        return db.query("SELECT * FROM courses WHERE id = ? AND language IN ('JAVA', 'RUST') AND (published OR owner = ?)", SUMMARY, id, jwt.getSubject())
                 .stream().findFirst().orElseThrow(() -> KodrWeb.notFound("Курс не найден"));
     }
 
@@ -82,7 +82,7 @@ class CoursesController {
     CourseSummary update(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody CourseData data) {
         return db.query("""
                 UPDATE courses SET language = ?, title = ?, description = ?
-                WHERE id = ? AND owner = ? RETURNING *
+                WHERE id = ? AND owner = ? AND language IN ('JAVA', 'RUST') RETURNING *
                 """, SUMMARY, data.language().name(), data.title(), data.description(), id, jwt.getSubject())
                 .stream().findFirst().orElseThrow(() -> KodrWeb.notFound("Курс не найден"));
     }
@@ -91,7 +91,7 @@ class CoursesController {
     @PreAuthorize("hasRole('teacher')")
     @Operation(summary = "Опубликовать курс с материалами или вернуть его в черновики")
     CourseSummary publish(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody Publication data) {
-        return db.query("UPDATE courses SET published = ? WHERE id = ? AND owner = ? RETURNING *",
+        return db.query("UPDATE courses SET published = ? WHERE id = ? AND owner = ? AND language IN ('JAVA', 'RUST') RETURNING *",
                         SUMMARY, data.published(), id, jwt.getSubject())
                 .stream().findFirst().orElseThrow(() -> KodrWeb.notFound("Курс не найден"));
     }
@@ -104,7 +104,7 @@ class CoursesController {
         UUID module = UUID.randomUUID();
         int rows = db.update("""
                 INSERT INTO course_modules (id, course_id, title, position)
-                SELECT ?, id, ?, ? FROM courses WHERE id = ? AND owner = ?
+                SELECT ?, id, ?, ? FROM courses WHERE id = ? AND owner = ? AND language IN ('JAVA', 'RUST')
                 """, module, data.title(), data.position(), id, jwt.getSubject());
         if (rows == 0) {
             throw KodrWeb.notFound("Курс не найден");
@@ -130,7 +130,7 @@ class CoursesController {
         int rows = db.update("""
                 INSERT INTO lessons (id, module_id, title, content, position)
                 SELECT ?, m.id, ?, ?, ? FROM course_modules m JOIN courses c ON c.id = m.course_id
-                WHERE m.id = ? AND c.id = ? AND c.owner = ?
+                WHERE m.id = ? AND c.id = ? AND c.owner = ? AND c.language IN ('JAVA', 'RUST')
                 """, lesson, data.title(), data.content(), data.position(), module, id, jwt.getSubject());
         return lessonResult(lesson, data, rows);
     }
@@ -143,7 +143,7 @@ class CoursesController {
         int rows = db.update("""
                 UPDATE lessons l SET title = ?, content = ?, position = ?
                 FROM course_modules m JOIN courses c ON c.id = m.course_id
-                WHERE l.id = ? AND l.module_id = m.id AND m.id = ? AND c.id = ? AND c.owner = ?
+                WHERE l.id = ? AND l.module_id = m.id AND m.id = ? AND c.id = ? AND c.owner = ? AND c.language IN ('JAVA', 'RUST')
                 """, data.title(), data.content(), data.position(), lesson, module, id, jwt.getSubject());
         return lessonResult(lesson, data, rows);
     }
@@ -184,7 +184,7 @@ class CoursesController {
 
         @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
         public Course get(UUID id, String subject) {
-            CourseSummary course = db.query("SELECT * FROM courses WHERE id = ? AND (published OR owner = ?)",
+            CourseSummary course = db.query("SELECT * FROM courses WHERE id = ? AND language IN ('JAVA', 'RUST') AND (published OR owner = ?)",
                             SUMMARY, id, subject)
                     .stream().findFirst().orElseThrow(() -> KodrWeb.notFound("Курс не найден"));
             List<Module> modules = db.query("""
@@ -218,7 +218,7 @@ class CoursesController {
         public Module updateModule(UUID course, UUID module, String owner, ModuleData data) {
             int rows = db.update("""
                     UPDATE course_modules m SET title = ?, position = ? FROM courses c
-                    WHERE m.id = ? AND m.course_id = c.id AND c.id = ? AND c.owner = ?
+                    WHERE m.id = ? AND m.course_id = c.id AND c.id = ? AND c.owner = ? AND c.language IN ('JAVA', 'RUST')
                     """, data.title(), data.position(), module, course, owner);
             if (rows == 0) {
                 throw KodrWeb.notFound("Модуль не найден");

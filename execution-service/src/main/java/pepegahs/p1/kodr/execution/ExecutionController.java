@@ -60,7 +60,7 @@ class ExecutionController {
             throw KodrWeb.unavailable();
         }
         UUID id = UUID.randomUUID();
-        RunResult result = new RunResult(id, request.language(), stdin, output);
+        RunResult result = new RunResult(id, request.language().name(), stdin, output);
         try {
             redis.opsForValue().set(cacheKey(jwt, id), Json.write(mapper, result), resultTtl);
         } catch (DataAccessException error) {
@@ -91,6 +91,6 @@ class ExecutionController {
                       @Size(max = 8192) String stdin) {
     }
 
-    record RunResult(UUID id, Language language, String stdin, Judge0.Result result) {
+    record RunResult(UUID id, String language, String stdin, Judge0.Result result) {
     }
 }
