@@ -14,9 +14,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.ProviderManager;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -50,7 +47,7 @@ import java.util.List;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
 class AuthSecurity {
-    static final Duration API_TOKEN_LIFETIME = Duration.ofMinutes(10);
+    static final Duration API_TOKEN_LIFETIME = Duration.ofHours(24);
     private static final String GRADER = "kodr-grader";
 
     @Bean
@@ -68,22 +65,22 @@ class AuthSecurity {
     SecurityFilterChain accountEndpoints(HttpSecurity http) throws Exception {
         var registration = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/register");
         var login = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/login");
+        var restore = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/session");
+        var logout = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/logout");
+        var email = PathPatternRequestMatcher.withDefaults().matcher("/api/auth/email");
+        var changePassword = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/password");
+        var sessionStatus = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/internal/auth/session");
         return http
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(requests -> requests.requestMatchers(registration, login).permitAll()
+                .authorizeHttpRequests(requests -> requests.requestMatchers(registration, login, restore, logout).permitAll()
+                        .requestMatchers(changePassword, email, sessionStatus).hasAuthority("SCOPE_" + KodrWeb.API_SCOPE)
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/v3/api-docs",
                                 "/v3/api-docs/**", "/error").permitAll()
                         .anyRequest().denyAll())
-                .csrf(csrf -> csrf.ignoringRequestMatchers(registration, login))
+                .csrf(csrf -> csrf.ignoringRequestMatchers(registration, login, restore, logout, changePassword, email))
+                .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
                 .logout(AbstractHttpConfigurer::disable)
                 .build();
-    }
-
-    @Bean
-    AuthenticationManager authenticationManager(Accounts accounts, PasswordEncoder passwords) {
-        var provider = new DaoAuthenticationProvider(accounts);
-        provider.setPasswordEncoder(passwords);
-        return new ProviderManager(provider);
     }
 
     @Bean

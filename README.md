@@ -32,22 +32,28 @@ JUDGE0_URL=https://judge0.example.com docker compose up --build -d
 Для нового аккаунта откройте `auth-service` в Swagger UI и вызовите `POST /api/auth/register` с полями `username`, `email` и `password`. Имя пользователя и почта уникальны без учёта регистра. Пароль должен содержать от 12 до 128 символов.
 
 1. В Swagger UI выберите `auth-service` и откройте `POST /api/auth/login`.
-2. Введите `username` и `password`. В ответе `200 OK` поле `access_token` содержит JWT со сроком действия 10 минут. При неверных учётных данных API возвращает `401 Unauthorized`.
-3. Выберите нужный сервис, нажмите **Authorize**, вставьте значение `access_token` в схему **kodrBearer** и подтвердите. Чтобы заполнить свой профиль, вызовите `PUT /api/users/me`. Для других HTTP-клиентов используйте заголовок `Authorization: Bearer <access_token>`.
+2. Введите `email` и `password`. В ответе `200 OK` поле `access_token` содержит JWT со сроком действия 24 часа. При неверных учётных данных API возвращает `401 Unauthorized`.
+3. Выберите нужный сервис, нажмите **Authorize**, вставьте значение `access_token` в схему **kodrBearer** и подтвердите. Чтобы заполнить свой профиль, вызовите `PUT /api/users/me`. Для администратора начальный профиль появляется при первом обращении к `GET /api/users/me`. Для других HTTP-клиентов используйте заголовок `Authorization: Bearer <access_token>`.
+
+Для смены пароля используйте `POST /api/auth/password` с Bearer JWT и полями `currentPassword` и `newPassword`. Успешный запрос возвращает `204 No Content` и отзывает ранее выданные пользовательские токены, включая токен текущего сеанса. При неверном текущем пароле API возвращает `422`.
+
+Фронтенд восстанавливает сеанс после перезагрузки через `POST /api/auth/session` и HttpOnly cookie. Срок остаётся 24 часа с момента входа. `POST /api/auth/logout` завершает браузерный сеанс. Для клиента с отдельным адресом используйте один сайт по HTTPS и разрешённый в Gateway origin.
+
+Текущий email доступен по `GET /api/auth/email`. В `PUT /api/auth/email` передаются `email` и `currentPassword`. Аватар сохраняется через `PUT /api/users/me/avatar` как URL с параметрами кадрирования или подготовленное PNG-изображение.
 
 ### Тестовый администратор
 
 При запуске с настройками Compose по умолчанию Auth Service создаёт эту учётную запись, если в базе ещё нет администратора.
 
-| Логин | Почта | Пароль для локальной проверки |
+| Имя пользователя | Почта для входа | Пароль для локальной проверки |
 | --- | --- | --- |
 | `admin` | `admin@kodr.native` | `kodr-dev-admin` |
 
-Вызовите `POST /api/auth/login` в Swagger с логином `admin` и вставьте полученный JWT в **Authorize → kodrBearer**. JWT этого аккаунта даёт доступ к `GET /actuator/info` на Gateway.
+Вызовите `POST /api/auth/login` в Swagger с адресом `admin@kodr.native` и вставьте полученный JWT в **Authorize → kodrBearer**. JWT этого аккаунта даёт доступ к `GET /actuator/info` на Gateway.
 
 При первом создании администратора можно задать `AUTH_ADMIN_USERNAME`, `AUTH_ADMIN_EMAIL` и `AUTH_ADMIN_PASSWORD`. Для `AUTH_ADMIN_EMAIL` подходит любой корректный уникальный адрес. Пустой `AUTH_ADMIN_PASSWORD` отключает автоматическое создание администратора.
 
-Для локальной разработки также доступны аккаунты `student` / `kodr-dev-student` и `teacher` / `kodr-dev-teacher`. Переменная `AUTH_DEMO_USERS=false` отключает их создание. Регистрация через API создаёт только ученика. RabbitMQ использует локальные данные `kodr` / `kodr-dev-rabbit`.
+Для локальной разработки также доступны аккаунты `student@example.test` / `kodr-dev-student` и `teacher@example.test` / `kodr-dev-teacher`. Переменная `AUTH_DEMO_USERS=false` отключает их создание. Регистрация через API создаёт только ученика. RabbitMQ использует локальные данные `kodr` / `kodr-dev-rabbit`.
 
 Публичный адрес Gateway и издателя JWT задаётся через `KODR_PUBLIC_URL`. Submission Service получает служебный токен по Client Credentials через внутренний `POST /oauth2/token` Auth Service.
 

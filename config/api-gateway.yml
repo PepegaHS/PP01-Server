@@ -14,7 +14,7 @@ spring:
             - id: auth
               uri: lb://auth-service
               predicates:
-                - Path=/oauth2/jwks,/api/auth/register,/api/auth/login
+                - Path=/oauth2/jwks,/api/auth/register,/api/auth/login,/api/auth/password,/api/auth/email,/api/auth/session,/api/auth/logout
             - id: auth-docs
               uri: lb://auth-service
               predicates:
@@ -154,5 +154,7 @@ springdoc:
         url: /docs/progress
 
 kodr:
+  auth:
+    session-url: ${AUTH_SESSION_URL:http://localhost:8180/internal/auth/session}
   cors:
     origins: ${KODR_CORS_ORIGINS:http://localhost:3000,http://localhost:5173}

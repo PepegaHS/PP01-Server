@@ -142,6 +142,7 @@ services:
     environment:
       <<: *env
       KODR_APP: api-gateway
+      AUTH_SESSION_URL: http://auth-service:8080/internal/auth/session
       KODR_CORS_ORIGINS: "${KODR_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}"
     ports: ["127.0.0.1:8080:8080"]
     depends_on:
